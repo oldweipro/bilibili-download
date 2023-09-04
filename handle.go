@@ -5,7 +5,6 @@ import (
 	"github.com/imroc/req/v3"
 	"github.com/skip2/go-qrcode"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -33,7 +32,7 @@ func GetLocalSessionData() {
 		return
 	}
 	// 读取 session_data 文件内容
-	content, err := ioutil.ReadFile(sessionDataPath)
+	content, err := os.ReadFile(sessionDataPath)
 	if err != nil {
 		return
 	}
@@ -68,7 +67,7 @@ func printQrcode(data string) {
 		os.Exit(1)
 	}
 	// 使用字符串格式打印二维码到控制台
-	fmt.Println(qr.ToSmallString(false))
+	fmt.Println(qr.ToSmallString(true))
 }
 
 func QrcodeLoginCallback(qrcodeKey string) {

@@ -23,7 +23,7 @@ type Resp struct {
 	Ttl     int    `json:"ttl"`
 }
 
-type Response[RespData WebInterfaceViewRespData | VideoPlayRespData | LoginCallbackRespData | LoginQrcodeGenerateRespData | NavUserRespData] struct {
+type Response[RespData WebInterfaceViewRespData | VideoPlayRespData | LoginCallbackRespData | LoginQrcodeGenerateRespData | NavUserRespData | Mp4VideoRespData] struct {
 	Resp
 	Data              RespData   `json:"data"`
 	IsSeasonDisplay   bool       `json:"is_season_display"`
@@ -466,9 +466,48 @@ type Downloader struct {
 	Current int64
 }
 
+type Mp4VideoRespData struct {
+	From              string      `json:"from"`
+	Result            string      `json:"result"`
+	Message           string      `json:"message"`
+	Quality           int         `json:"quality"`
+	Format            string      `json:"format"`
+	Timelength        int         `json:"timelength"`
+	AcceptFormat      string      `json:"accept_format"`
+	AcceptDescription []string    `json:"accept_description"`
+	AcceptQuality     []int       `json:"accept_quality"`
+	VideoCodecid      int         `json:"video_codecid"`
+	SeekParam         string      `json:"seek_param"`
+	SeekType          string      `json:"seek_type"`
+	Durl              []Durl      `json:"durl"`
+	SupportFormats    []Format    `json:"support_formats"`
+	HighFormat        interface{} `json:"high_format"`
+	LastPlayTime      int         `json:"last_play_time"`
+	LastPlayCid       int         `json:"last_play_cid"`
+}
+
+type Durl struct {
+	Order     int      `json:"order"`
+	Length    int      `json:"length"`
+	Size      int      `json:"size"`
+	Ahead     string   `json:"ahead"`
+	Vhead     string   `json:"vhead"`
+	Url       string   `json:"url"`
+	BackupUrl []string `json:"backup_url"`
+}
+
+type Format struct {
+	Quality        int         `json:"quality"`
+	Format         string      `json:"format"`
+	NewDescription string      `json:"new_description"`
+	DisplayDesc    string      `json:"display_desc"`
+	Superscript    string      `json:"superscript"`
+	Codecs         interface{} `json:"codecs"`
+}
+
 func (d *Downloader) Read(p []byte) (n int, err error) {
 	n, err = d.Reader.Read(p)
 	d.Current += int64(n)
-	fmt.Printf("\rprogress: %.2f%%", float64(d.Current)*100.0/float64(d.Total))
+	fmt.Printf("\r下载进度: %.2f%%", float64(d.Current)*100.0/float64(d.Total))
 	return
 }

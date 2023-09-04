@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -41,7 +42,7 @@ func GetLocalSessionData() {
 	return
 }
 
-func QrcodeLoginScan() {
+func QrcodeLoginScan() bool {
 	params := make(map[string]interface{})
 	params["source"] = "main-fe-header"
 	loginQrcodeGenerateRespData := ReqGet[LoginQrcodeGenerateRespData](WebQrcodeGenerate, params)
@@ -49,10 +50,14 @@ func QrcodeLoginScan() {
 	qrcodeKey := loginQrcodeGenerateRespData.Data.QrcodeKey
 	printQrcode(qrUrl)
 	QrcodeLoginCallback(qrcodeKey)
-	err := writeSessionDataToLocalFile()
-	if err != nil {
-		fmt.Println("写入文件失败。。。。")
+	isVip := CheckBigVip()
+	if isVip {
+		err := writeSessionDataToLocalFile()
+		if err != nil {
+			fmt.Println("写入文件失败。。。。")
+		}
 	}
+	return isVip
 }
 
 func printQrcode(data string) {
@@ -143,25 +148,18 @@ func CheckAccount() (flag bool, msg string) {
 func CheckBigVip() bool {
 	params := make(map[string]interface{})
 	data := ReqGet[NavUserRespData](WebInterfaceNav, params)
-	// TODO 我的大会员类型是2，需要找个不是大会员的测试一下，还有status是否是1
-	if data.Data.VipStatus == 1 && data.Data.VipType > 1 {
+	// 我的大会员类型是2，status是1;普通用户类型是1，status是0
+	if data.Data.VipStatus >= 1 && data.Data.VipType >= 2 {
 		return true
 	}
 	return false
 }
 
-func DownloadVideo(bvId, savePath string, qn int) {
-	data := playerPlayUrl(bvId)
-	video := data.Data.Dash.Video
-	videoUrl := ""
-	for _, stream := range video {
-		if stream.ID == qn {
-			videoUrl = stream.BaseURL
-			break
-		}
-	}
+func DownloadMp4Video(bvId, savePath string, qn int) {
+	data := Mp4VideoPlay(bvId, qn)
+	videoUrl := data.Data.Durl[0].Url
 	if videoUrl != "" {
-		filename := fmt.Sprintf("%v_%v_%v", bvId, time.Now().Unix(), ".mp4")
+		filename := fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Unix(), ".mp4")
 		client := &http.Client{}
 		request, err := http.NewRequest("GET", videoUrl, nil)
 		if err != nil {
@@ -197,9 +195,113 @@ func DownloadVideo(bvId, savePath string, qn int) {
 			rsp.ContentLength,
 			0,
 		}
-
 		io.Copy(out, dr)
 	}
+	return
+}
+
+func DownloadVideo(bvId, savePath string, qn int) (filename string) {
+	data := playerPlayUrl(bvId)
+	video := data.Data.Dash.Video
+	videoUrl := ""
+	for _, stream := range video {
+		if stream.ID == qn {
+			videoUrl = stream.BaseURL
+			break
+		}
+	}
+	if videoUrl != "" {
+		filename = fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Unix(), ".m4s")
+		client := &http.Client{}
+		request, err := http.NewRequest("GET", videoUrl, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		setUserAgent(request)
+		SetCookie(request)
+		request.Header.Set("Accept", "*/*")
+		request.Header.Set("Accept-Language", "en-US,en;q=0.5")
+		request.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		request.Header.Set("Range", "bytes=0-")                               // Range 的值要为 bytes=0- 才能下载完整视频
+		request.Header.Set("Referer", "https://www.bilibili.com/video/"+bvId) // 必需添加
+		request.Header.Set("Origin", "https://www.bilibili.com")
+		request.Header.Set("Connection", "keep-alive")
+
+		rsp, err := client.Do(request)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer rsp.Body.Close()
+
+		path := filepath.Join(savePath, filename)
+		out, err := os.Create(path)
+		if err != nil {
+			log.Printf("err: %v", err)
+			return
+		}
+		defer out.Close()
+		dr := &Downloader{
+			rsp.Body,
+			rsp.ContentLength,
+			0,
+		}
+		io.Copy(out, dr)
+	}
+	return
+}
+
+func DownloadAudio(bvId, savePath string, qn int) (filename string) {
+	data := playerPlayUrl(bvId)
+	audio := data.Data.Dash.Audio
+	audioUrl := ""
+	for _, stream := range audio {
+		if stream.ID == qn {
+			audioUrl = stream.BaseURL
+			break
+		}
+	}
+	if audioUrl != "" {
+		filename = fmt.Sprintf("audio_%v_%v%v", bvId, time.Now().Unix(), ".m4s")
+		client := &http.Client{}
+		request, err := http.NewRequest("GET", audioUrl, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		setUserAgent(request)
+		SetCookie(request)
+		request.Header.Set("Accept", "*/*")
+		request.Header.Set("Accept-Language", "en-US,en;q=0.5")
+		request.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		request.Header.Set("Range", "bytes=0-")                               // Range 的值要为 bytes=0- 才能下载完整视频
+		request.Header.Set("Referer", "https://www.bilibili.com/video/"+bvId) // 必需添加
+		request.Header.Set("Origin", "https://www.bilibili.com")
+		request.Header.Set("Connection", "keep-alive")
+
+		rsp, err := client.Do(request)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer rsp.Body.Close()
+
+		path := filepath.Join(savePath, filename)
+		out, err := os.Create(path)
+		if err != nil {
+			log.Printf("err: %v", err)
+			return
+		}
+		defer out.Close()
+		dr := &Downloader{
+			rsp.Body,
+			rsp.ContentLength,
+			0,
+		}
+		io.Copy(out, dr)
+	}
+	return
 }
 
 func HasSubtitle(bvid string) bool {
@@ -221,6 +323,24 @@ func GetVideoQuality(bvid string) ([]string, []int) {
 	return description, quality
 }
 
+func GetAudioQuality(bvid string) ([]string, []int) {
+	data := playerPlayUrl(bvid)
+	var quality []int
+	var description []string
+	for _, audio := range data.Data.Dash.Audio {
+		quality = append(quality, audio.ID)
+		switch audio.ID {
+		case 30216:
+			description = append(description, "64  kbps")
+		case 30232:
+			description = append(description, "128 kbps")
+		case 30280:
+			description = append(description, "320 kbps")
+		}
+	}
+	return description, quality
+}
+
 // 获取视频播放信息
 func playerPlayUrl(bvid string) (videoRespData *Response[VideoPlayRespData]) {
 	webInterfaceViewRespData := webInterfaceView(bvid)
@@ -232,6 +352,17 @@ func playerPlayUrl(bvid string) (videoRespData *Response[VideoPlayRespData]) {
 	return
 }
 
+// Mp4VideoPlay 获取视频播放信息
+func Mp4VideoPlay(bvid string, qn int) (videoRespData *Response[Mp4VideoRespData]) {
+	webInterfaceViewRespData := webInterfaceView(bvid)
+	params := make(map[string]interface{})
+	params["bvid"] = bvid
+	params["cid"] = webInterfaceViewRespData.Data.Cid
+	params["qn"] = qn
+	videoRespData = ReqGet[Mp4VideoRespData](PlayerPlayUrl, params)
+	return
+}
+
 // 获取视频页面信息
 func webInterfaceView(bvid string) (webInterfaceViewRespData *Response[WebInterfaceViewRespData]) {
 	params := make(map[string]interface{})
@@ -240,13 +371,15 @@ func webInterfaceView(bvid string) (webInterfaceViewRespData *Response[WebInterf
 	return
 }
 
-func ReqGet[T WebInterfaceViewRespData | VideoPlayRespData | LoginCallbackRespData | LoginQrcodeGenerateRespData | NavUserRespData](reqUrl string, params map[string]interface{}) (videoRespData *Response[T]) {
+func ReqGet[T WebInterfaceViewRespData | VideoPlayRespData | LoginCallbackRespData | LoginQrcodeGenerateRespData | NavUserRespData | Mp4VideoRespData](reqUrl string, params map[string]interface{}) (videoRespData *Response[T]) {
 	client := req.C().
 		SetTimeout(5 * time.Second)
-	cookie := http.Cookie{Name: "SESSDATA", Value: SessionData, Expires: time.Now().Add(30 * 24 * 60 * 60 * time.Second)}
+	if SessionData != "" {
+		cookie := http.Cookie{Name: "SESSDATA", Value: SessionData, Expires: time.Now().Add(30 * 24 * 60 * 60 * time.Second)}
+		client.SetCommonCookies(&cookie)
+	}
 	var errMsg Resp
 	resp, err := client.R().
-		SetCookies(&cookie).
 		SetQueryParamsAnyType(params).
 		SetSuccessResult(&videoRespData). // Unmarshal response body into userInfo automatically if status code is between 200 and 299.
 		SetErrorResult(&errMsg).          // Unmarshal response body into errMsg automatically if status code >= 400.
@@ -282,4 +415,20 @@ func setUserAgent(req *http.Request) {
 func SetCookie(req *http.Request) {
 	cookie := http.Cookie{Name: "SESSDATA", Value: SessionData, Expires: time.Now().Add(30 * 24 * 60 * 60 * time.Second)}
 	req.AddCookie(&cookie)
+}
+
+// RemoveFiles 删除文件
+func RemoveFiles(fileList *[]string) error {
+	for _, file := range *fileList {
+		if err := os.Remove(file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GetSavePath() (savePath string, err error) {
+	savePath, err = os.Getwd()
+	savePath = strings.TrimSpace(savePath)
+	return
 }

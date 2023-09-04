@@ -54,6 +54,7 @@ func AskSavePath() string {
 	}
 }
 
+// AskSelectDownloadType 下载类型
 func AskSelectDownloadType() []string {
 	var selectedOptions []string
 	question := &survey.MultiSelect{
@@ -70,6 +71,34 @@ func AskSelectDownloadType() []string {
 	return selectedOptions
 }
 
+func AskIsLoginVip() bool {
+	confirm := false
+	prompt := &survey.Confirm{
+		Message: "是否登录大会员账号,以下载更高清晰度?",
+	}
+	survey.AskOne(prompt, &confirm)
+	return confirm
+}
+
+// AskSelectMp4VideoQuality 选择视频清晰度
+func AskSelectMp4VideoQuality(bv string) int {
+	vq := ""
+	data := Mp4VideoPlay(bv, 16)
+	quality := data.Data.AcceptDescription
+	nums := data.Data.AcceptQuality
+	prompt := &survey.Select{
+		Message: "请选择视频清晰度:",
+		Options: quality,
+	}
+	err := survey.AskOne(prompt, &vq)
+	if err != nil {
+		return 16
+	}
+	videoQuality := findIntByQuality(quality, nums, vq)
+	return videoQuality
+}
+
+// AskSelectVideoQuality 选择视频清晰度
 func AskSelectVideoQuality(bv string) int {
 	vq := ""
 	quality, nums := GetVideoQuality(bv)
@@ -80,6 +109,22 @@ func AskSelectVideoQuality(bv string) int {
 	err := survey.AskOne(prompt, &vq)
 	if err != nil {
 		return 16
+	}
+	videoQuality := findIntByQuality(quality, nums, vq)
+	return videoQuality
+}
+
+// AskSelectAudioQuality 选择音频清晰度
+func AskSelectAudioQuality(bv string) int {
+	vq := ""
+	quality, nums := GetAudioQuality(bv)
+	prompt := &survey.Select{
+		Message: "请选择音频清晰度:",
+		Options: quality,
+	}
+	err := survey.AskOne(prompt, &vq)
+	if err != nil {
+		return 30216
 	}
 	byQuality := findIntByQuality(quality, nums, vq)
 	return byQuality

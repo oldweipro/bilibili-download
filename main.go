@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-const (
-	dajuyuan = "BV1GU4y1x7XT"
-	full8k   = "BV1s34y1C7yo"
-)
-
 func main() {
 	x()
 }
@@ -59,7 +54,7 @@ func x() {
 	} else {
 		fmt.Println("⏱️ 请耐心等待视频下载 🎬")
 		videoFile := DownloadVideo(bvId, savePath, videoQuality)
-		fmt.Println("⏱️ 请耐心等待音频下载 🎵")
+		fmt.Println("\n⏱️ 请耐心等待音频下载 🎵")
 		audioFile := DownloadAudio(bvId, savePath, audioQuality)
 		filename := fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Unix(), ".mp4")
 		fileList := []string{videoFile, audioFile}

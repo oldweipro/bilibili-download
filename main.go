@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-var bvId = "BV1pqwFevEQ4"
+var bvId = "BV1zUCEYNEpk"
 
 func main() {
 	if bvId == "" {
@@ -34,7 +34,7 @@ func main() {
 	flag, msg := CheckAccount()
 	fmt.Println(msg)
 	if !flag {
-		loginScan := QrcodeLoginScan()
+		loginScan := QrcodeLogin()
 		if loginScan {
 			flag = loginScan
 			fmt.Println("👏 欢迎尊贵的大会员用户！👏")
@@ -52,20 +52,22 @@ func main() {
 	fmt.Println("📁视频存储路径:", savePath)
 	if !flag {
 		videoQuality := AskSelectMp4VideoQuality(bvId)
-		DownloadMp4Video(bvId, savePath, videoQuality)
+		DownloadMedia(bvId, savePath, videoQuality, "mp4")
 		return
 	}
 	// 依次选择保存的分辨率
-	videoQuality := AskSelectVideoQuality(bvId)
-	audioQuality := AskSelectAudioQuality(bvId)
+	quality, nums := GetVideoQuality(bvId)
+	videoQuality := AskSelectQuality(quality, nums)
+	quality1, nums1 := GetAudioQuality(bvId)
+	audioQuality := AskSelectQuality(quality1, nums1)
 	fmt.Println("开始下载")
 	if videoQuality == 80 || videoQuality == 16 {
-		DownloadMp4Video(bvId, savePath, videoQuality)
+		DownloadMedia(bvId, savePath, videoQuality, "video")
 	} else {
 		fmt.Println("⏱️ 请耐心等待视频下载 🎬")
-		videoFile := DownloadVideo(bvId, savePath, videoQuality)
+		videoFile, _ := DownloadMedia(bvId, savePath, videoQuality, "video")
 		fmt.Println("\n⏱️ 请耐心等待音频下载 🎵")
-		audioFile := DownloadAudio(bvId, savePath, audioQuality)
+		audioFile, _ := DownloadMedia(bvId, savePath, audioQuality, "audio")
 		filename := fmt.Sprintf("video_%v_%v_%v_%v%v", bvId, videoQuality, audioQuality, time.Now().Unix(), ".mp4")
 		fileList := []string{videoFile, audioFile}
 		err = FfmpegMergeFile(&fileList, &filename)
@@ -86,21 +88,34 @@ func AskSelectMp4VideoQuality(bv string) int {
 	data := Mp4VideoPlay(bv, 16)
 	quality := data.Data.AcceptDescription
 	nums := data.Data.AcceptQuality
-
 	m := model{
 		qualityOptions:  quality,
 		selectedQuality: quality[0], // 默认选择第一个
 	}
-
 	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
+	if result, err := p.Run(); err != nil {
 		fmt.Printf("启动程序时出错: %v\n", err)
 		return 16
+	} else {
+		videoQuality := findIntByQuality(quality, nums, result.(model).selectedQuality)
+		// 返回所选质量对应的数字
+		return videoQuality
+	}
+}
+func AskSelectQuality(qualityOptions []string, qualityNumbers []int) int {
+	m := model{
+		qualityOptions:  qualityOptions,
+		selectedQuality: qualityOptions[0], // Default to first option
 	}
 
-	// 返回所选质量对应的数字
-	videoQuality := findIntByQuality(quality, nums, m.selectedQuality)
-	return videoQuality
+	p := tea.NewProgram(m)
+	if result, err := p.Run(); err != nil {
+		fmt.Printf("启动程序时出错: %v\n", err)
+		return qualityNumbers[0]
+	} else {
+		return findIntByQuality(qualityOptions, qualityNumbers, result.(model).selectedQuality)
+	}
+
 }
 
 type model struct {
@@ -179,43 +194,6 @@ func findIntByQuality(quality []string, nums []int, selectedQuality string) int 
 	}
 	return nums[0] // 默认返回第一个质量
 }
-func AskSelectVideoQuality(bv string) int {
-	quality, nums := GetVideoQuality(bv)
-
-	m := model{
-		qualityOptions:  quality,
-		selectedQuality: quality[0], // 默认选择第一个
-	}
-
-	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("启动程序时出错: %v\n", err)
-		return 16
-	}
-
-	// 返回所选质量对应的数字
-	videoQuality := findIntByQuality(quality, nums, m.selectedQuality)
-	return videoQuality
-}
-
-func AskSelectAudioQuality(bv string) int {
-	quality, nums := GetAudioQuality(bv)
-
-	m := model{
-		qualityOptions:  quality,
-		selectedQuality: quality[0], // 默认选择第一个
-	}
-
-	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("启动程序时出错: %v\n", err)
-		return 16
-	}
-
-	// 返回所选质量对应的数字
-	videoQuality := findIntByQuality(quality, nums, m.selectedQuality)
-	return videoQuality
-}
 
 //============================== bubbletea end ==============================
 
@@ -248,22 +226,31 @@ func GetLocalSessionData() {
 	return
 }
 
-func QrcodeLoginScan() bool {
-	params := make(map[string]interface{})
-	params["source"] = "main-fe-header"
-	loginQrcodeGenerateRespData := ReqGet[LoginQrcodeGenerateRespData](WebQrcodeGenerate, params)
-	qrUrl := loginQrcodeGenerateRespData.Data.Url
-	qrcodeKey := loginQrcodeGenerateRespData.Data.QrcodeKey
+func QrcodeLogin() bool {
+	params := map[string]interface{}{"source": "main-fe-header"}
+	loginResp := ReqGet[LoginQrcodeGenerateRespData](WebQrcodeGenerate, params)
+	qrUrl, qrcodeKey := loginResp.Data.Url, loginResp.Data.QrcodeKey
+
 	printQrcode(qrUrl)
-	QrcodeLoginCallback(qrcodeKey)
-	isVip := CheckBigVip()
-	if isVip {
-		err := writeSessionDataToLocalFile()
-		if err != nil {
-			fmt.Println("写入文件失败。。。。")
+	if QrcodeLoginPoll(qrcodeKey) {
+		if CheckBigVip() {
+			if err := writeSessionDataToLocalFile(); err != nil {
+				log.Println("Failed to write session data:", err)
+			}
+			return true
 		}
 	}
-	return isVip
+	return false
+}
+func QrcodeLoginPoll(qrcodeKey string) bool {
+	params := map[string]interface{}{"source": "main-fe-header", "qrcode_key": qrcodeKey}
+	for {
+		data := ReqGet[LoginCallbackRespData](WebQrcodePoll, params)
+		if data.Data.Code == 0 {
+			getSessionDataFromUrl(data.Data.Url)
+			return true
+		}
+	}
 }
 
 func printQrcode(data string) {
@@ -275,23 +262,6 @@ func printQrcode(data string) {
 	}
 	// 使用字符串格式打印二维码到控制台
 	fmt.Println(qr.ToSmallString(true))
-}
-
-func QrcodeLoginCallback(qrcodeKey string) {
-	params := make(map[string]interface{})
-	params["source"] = "main-fe-header"
-	params["qrcode_key"] = qrcodeKey
-	for {
-		data := ReqGet[LoginCallbackRespData](WebQrcodePoll, params)
-		// 86090 已扫码
-		// 0 完成
-		if data.Data.Code == 0 {
-			getSessionDataFromUrl(data.Data.Url)
-			break
-		} else {
-			continue
-		}
-	}
 }
 
 func getSessionDataFromUrl(dataUrl string) {
@@ -360,32 +330,45 @@ func CheckBigVip() bool {
 	}
 	return false
 }
-
-func DownloadMp4Video(bvId, savePath string, qn int) {
-	data := Mp4VideoPlay(bvId, qn)
-	videoUrl := data.Data.Durl[0].Url
-	if videoUrl != "" {
-		filename := fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Unix(), ".mp4")
-		client := &http.Client{}
-		request, err := http.NewRequest("GET", videoUrl, nil)
-		if err != nil {
-			log.Println(err)
-			return
+func DownloadMedia(bvId, savePath string, qn int, mediaType string) (filename string, err error) {
+	var url string
+	// Determine the URL and media data based on the type
+	switch mediaType {
+	case "video":
+		data := playerPlayUrl(bvId)
+		for _, stream := range data.Data.Dash.Video {
+			if stream.ID == qn {
+				url = stream.BaseURL
+				break
+			}
 		}
-		setUserAgent(request)
+	case "mp4":
+		data := Mp4VideoPlay(bvId, qn)
+		url = data.Data.Durl[0].Url
+	case "audio":
+		data := playerPlayUrl(bvId)
+		for _, stream := range data.Data.Dash.Audio {
+			if stream.ID == qn {
+				url = stream.BaseURL
+				break
+			}
+		}
+	}
+
+	if url != "" {
+		filename = fmt.Sprintf("%s_%v_%v%v", mediaType, bvId, time.Now().Unix(), ".mp4")
+		client := &http.Client{}
+		request, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return "", err
+		}
+		setDefaultHeaders(request, bvId)
 		SetCookie(request)
-		request.Header.Set("Accept", "*/*")
-		request.Header.Set("Accept-Language", "en-US,en;q=0.5")
-		request.Header.Set("Accept-Encoding", "gzip, deflate, br")
-		request.Header.Set("Range", "bytes=0-")                               // Range 的值要为 bytes=0- 才能下载完整视频
-		request.Header.Set("Referer", "https://www.bilibili.com/video/"+bvId) // 必需添加
-		request.Header.Set("Origin", "https://www.bilibili.com")
-		request.Header.Set("Connection", "keep-alive")
 
 		rsp, err := client.Do(request)
 		if err != nil {
 			log.Println(err)
-			return
+			return "", err
 		}
 		defer rsp.Body.Close()
 
@@ -393,9 +376,10 @@ func DownloadMp4Video(bvId, savePath string, qn int) {
 		out, err := os.Create(path)
 		if err != nil {
 			log.Printf("err: %v", err)
-			return
+			return "", err
 		}
 		defer out.Close()
+
 		dr := &Downloader{
 			rsp.Body,
 			rsp.ContentLength,
@@ -403,125 +387,8 @@ func DownloadMp4Video(bvId, savePath string, qn int) {
 		}
 		io.Copy(out, dr)
 	}
-	return
+	return filename, nil
 }
-
-func DownloadVideo(bvId, savePath string, qn int) (filename string) {
-	data := playerPlayUrl(bvId)
-	video := data.Data.Dash.Video
-	videoUrl := ""
-	for _, stream := range video {
-		if stream.ID == qn {
-			videoUrl = stream.BaseURL
-			break
-		}
-	}
-	if videoUrl != "" {
-		filename = fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Unix(), ".m4s")
-		client := &http.Client{}
-		request, err := http.NewRequest("GET", videoUrl, nil)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		setUserAgent(request)
-		SetCookie(request)
-		request.Header.Set("Accept", "*/*")
-		request.Header.Set("Accept-Language", "en-US,en;q=0.5")
-		request.Header.Set("Accept-Encoding", "gzip, deflate, br")
-		request.Header.Set("Range", "bytes=0-")                               // Range 的值要为 bytes=0- 才能下载完整视频
-		request.Header.Set("Referer", "https://www.bilibili.com/video/"+bvId) // 必需添加
-		request.Header.Set("Origin", "https://www.bilibili.com")
-		request.Header.Set("Connection", "keep-alive")
-
-		rsp, err := client.Do(request)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		defer rsp.Body.Close()
-
-		path := filepath.Join(savePath, filename)
-		out, err := os.Create(path)
-		if err != nil {
-			log.Printf("err: %v", err)
-			return
-		}
-		defer out.Close()
-		dr := &Downloader{
-			rsp.Body,
-			rsp.ContentLength,
-			0,
-		}
-		io.Copy(out, dr)
-	}
-	return
-}
-
-func DownloadAudio(bvId, savePath string, qn int) (filename string) {
-	data := playerPlayUrl(bvId)
-	audio := data.Data.Dash.Audio
-	audioUrl := ""
-	for _, stream := range audio {
-		if stream.ID == qn {
-			audioUrl = stream.BaseURL
-			break
-		}
-	}
-	if audioUrl != "" {
-		filename = fmt.Sprintf("audio_%v_%v%v", bvId, time.Now().Unix(), ".m4s")
-		client := &http.Client{}
-		request, err := http.NewRequest("GET", audioUrl, nil)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		setUserAgent(request)
-		SetCookie(request)
-		request.Header.Set("Accept", "*/*")
-		request.Header.Set("Accept-Language", "en-US,en;q=0.5")
-		request.Header.Set("Accept-Encoding", "gzip, deflate, br")
-		request.Header.Set("Range", "bytes=0-")                               // Range 的值要为 bytes=0- 才能下载完整视频
-		request.Header.Set("Referer", "https://www.bilibili.com/video/"+bvId) // 必需添加
-		request.Header.Set("Origin", "https://www.bilibili.com")
-		request.Header.Set("Connection", "keep-alive")
-
-		rsp, err := client.Do(request)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		defer rsp.Body.Close()
-
-		path := filepath.Join(savePath, filename)
-		out, err := os.Create(path)
-		if err != nil {
-			log.Printf("err: %v", err)
-			return
-		}
-		defer out.Close()
-		dr := &Downloader{
-			rsp.Body,
-			rsp.ContentLength,
-			0,
-		}
-		io.Copy(out, dr)
-	}
-	return
-}
-
-func HasSubtitle(bvid string) bool {
-	response := webInterfaceView(bvid)
-	if response != nil && len(response.Data.Subtitle.List) > 0 {
-		return true
-	}
-	return false
-}
-
-func GetSubtitleInfo() {
-
-}
-
 func GetVideoQuality(bvid string) ([]string, []int) {
 	data := playerPlayUrl(bvid)
 	quality := data.Data.AcceptQuality
@@ -614,9 +481,15 @@ func ReqGet[T WebInterfaceViewRespData | VideoPlayRespData | LoginCallbackRespDa
 	log.Println(resp.Dump()) // Record raw content when server returned unknown status code.
 	return
 }
-
-func setUserAgent(req *http.Request) {
+func setDefaultHeaders(req *http.Request, bvId string) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Range", "bytes=0-")
+	req.Header.Set("Referer", "https://www.bilibili.com/video/"+bvId)
+	req.Header.Set("Origin", "https://www.bilibili.com")
+	req.Header.Set("Connection", "keep-alive")
 }
 func SetCookie(req *http.Request) {
 	cookie := http.Cookie{Name: "SESSDATA", Value: SessionData, Expires: time.Now().Add(30 * 24 * 60 * 60 * time.Second)}

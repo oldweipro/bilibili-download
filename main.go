@@ -56,7 +56,7 @@ func main() {
 	audioQuality := AskSelectQuality(quality1, nums1)
 	fmt.Println("开始下载")
 	if videoQuality == 80 || videoQuality == 16 {
-		DownloadMedia(bvId, savePath, videoQuality, "video")
+		DownloadMedia(bvId, savePath, videoQuality, "mp4")
 	} else {
 		fmt.Println("⏱️ 请耐心等待视频下载 🎬")
 		videoFile, _ := DownloadMedia(bvId, savePath, videoQuality, "video")

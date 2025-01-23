@@ -158,7 +158,7 @@ func DownloadMp4Video(bvId, savePath string, qn int) {
 	data := Mp4VideoPlay(bvId, qn)
 	videoUrl := data.Data.Durl[0].Url
 	if videoUrl != "" {
-		filename := fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Format("2006-01-02 15:04:05"), ".mp4")
+		filename := fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Unix(), ".mp4")
 		client := &http.Client{}
 		request, err := http.NewRequest("GET", videoUrl, nil)
 		if err != nil {
@@ -210,7 +210,7 @@ func DownloadVideo(bvId, savePath string, qn int) (filename string) {
 		}
 	}
 	if videoUrl != "" {
-		filename = fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Format("2006-01-02 15:04:05"), ".m4s")
+		filename = fmt.Sprintf("video_%v_%v%v", bvId, time.Now().Unix(), ".m4s")
 		client := &http.Client{}
 		request, err := http.NewRequest("GET", videoUrl, nil)
 		if err != nil {

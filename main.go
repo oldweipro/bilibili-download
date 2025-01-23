@@ -13,6 +13,7 @@ func x() {
 	hasFfmpeg, err := FfmpegVersion()
 	if err != nil {
 		fmt.Println(err.Error())
+		return
 	}
 	fmt.Println("📺 BiliBili 视频下载! ")
 	GetLocalSessionData()
@@ -56,7 +57,7 @@ func x() {
 		videoFile := DownloadVideo(bvId, savePath, videoQuality)
 		fmt.Println("\n⏱️ 请耐心等待音频下载 🎵")
 		audioFile := DownloadAudio(bvId, savePath, audioQuality)
-		filename := fmt.Sprintf("video_%v_%v_%v_%v%v", bvId, videoQuality, audioQuality, time.Now().Format("2006-01-02 15:04:05"), ".mp4")
+		filename := fmt.Sprintf("video_%v_%v_%v_%v%v", bvId, videoQuality, audioQuality, time.Now().Unix(), ".mp4")
 		fileList := []string{videoFile, audioFile}
 		err = FfmpegMergeFile(&fileList, &filename)
 		if err != nil {

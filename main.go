@@ -26,20 +26,6 @@ func main() {
 		fmt.Println(err.Error())
 		return
 	}
-	fmt.Println("📺 BiliBili 视频下载! ")
-	GetLocalSessionData()
-	flag, msg := CheckAccount()
-	fmt.Println(msg)
-	if !flag {
-		loginScan := QrcodeLogin()
-		if loginScan {
-			flag = loginScan
-			fmt.Println("👏 欢迎尊贵的大会员用户！👏")
-		} else {
-			fmt.Println("☹️ 抱歉您不是大会员用户！☹️")
-		}
-	}
-	fmt.Println(bvId)
 	// 保存路径
 	savePath, err := GetSavePath()
 	if err != nil {
@@ -47,10 +33,21 @@ func main() {
 		return
 	}
 	fmt.Println("📁视频存储路径:", savePath)
+	GetLocalSessionData()
+	flag := CheckAccount()
 	if !flag {
-		videoQuality := AskSelectMp4VideoQuality(bvId)
-		DownloadMedia(bvId, savePath, videoQuality, "mp4")
-		return
+		loginScan := QrcodeLogin()
+		if loginScan {
+			fmt.Println("👏 欢迎尊贵的大会员用户！👏")
+		} else {
+			fmt.Println("☹️ 抱歉您不是大会员用户！☹️")
+			data := Mp4VideoPlay(bvId, 16)
+			quality := data.Data.AcceptDescription
+			nums := data.Data.AcceptQuality
+			videoQuality := AskSelectQuality(quality, nums)
+			DownloadMedia(bvId, savePath, videoQuality, "mp4")
+			return
+		}
 	}
 	// 依次选择保存的分辨率
 	quality, nums := GetVideoQuality(bvId)
@@ -81,24 +78,6 @@ func main() {
 
 //============================== bubbletea start ==============================
 
-func AskSelectMp4VideoQuality(bv string) int {
-	data := Mp4VideoPlay(bv, 16)
-	quality := data.Data.AcceptDescription
-	nums := data.Data.AcceptQuality
-	m := model{
-		qualityOptions:  quality,
-		selectedQuality: quality[0], // 默认选择第一个
-	}
-	p := tea.NewProgram(m)
-	if result, err := p.Run(); err != nil {
-		fmt.Printf("启动程序时出错: %v\n", err)
-		return 16
-	} else {
-		videoQuality := findIntByQuality(quality, nums, result.(model).selectedQuality)
-		// 返回所选质量对应的数字
-		return videoQuality
-	}
-}
 func AskSelectQuality(qualityOptions []string, qualityNumbers []int) int {
 	m := model{
 		qualityOptions:  qualityOptions,
@@ -196,25 +175,56 @@ func findIntByQuality(quality []string, nums []int, selectedQuality string) int 
 
 // ============================= handle start ==============================
 
+// 获取本地Session数据
 func GetLocalSessionData() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		log.Println("无法获取用户主目录:", err)
 		return
 	}
 	sessionDataPath := filepath.Join(homeDir, ".bilibili-download", "session_data")
 	_, err = os.Stat(sessionDataPath)
 	if os.IsNotExist(err) {
+		log.Println("Session数据文件不存在")
 		return
 	} else if err != nil {
+		log.Println("检查Session数据文件失败:", err)
 		return
 	}
-	// 读取 session_data 文件内容
 	content, err := os.ReadFile(sessionDataPath)
 	if err != nil {
+		log.Println("读取Session数据文件失败:", err)
 		return
 	}
 	SessionData = string(content)
-	return
+}
+
+// 写入Session数据到本地文件
+func writeSessionDataToLocalFile() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	folderPath := filepath.Join(homeDir, ".bilibili-download")
+	filePath := filepath.Join(folderPath, "session_data")
+
+	// 创建目录（如果不存在）
+	if err = os.MkdirAll(folderPath, os.ModePerm); err != nil {
+		return fmt.Errorf("无法创建文件夹: %v", err)
+	}
+
+	// 写入Session数据
+	file, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("无法创建文件: %v", err)
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(SessionData)
+	if err != nil {
+		return fmt.Errorf("写入文件内容失败: %v", err)
+	}
+	return nil
 }
 
 func QrcodeLogin() bool {
@@ -244,83 +254,49 @@ func QrcodeLoginPoll(qrcodeKey string) bool {
 	}
 }
 
+// 生成二维码
 func printQrcode(data string) {
-	// 生成二维码
 	qr, err := qrcode.New(data, qrcode.Medium)
 	if err != nil {
 		fmt.Println("生成二维码时出错:", err)
 		os.Exit(1)
 	}
-	// 使用字符串格式打印二维码到控制台
 	fmt.Println(qr.ToSmallString(true))
 }
 
+// 通过URL提取Session数据
 func getSessionDataFromUrl(dataUrl string) {
-	// 定义正则表达式模式
 	pattern := `SESSDATA=([^&]+)`
-	// 编译正则表达式
 	regex := regexp.MustCompile(pattern)
-	// 使用正则表达式查找匹配的子串
 	matches := regex.FindStringSubmatch(dataUrl)
-	// 检查是否找到匹配的子串
 	if len(matches) >= 2 {
 		SessionData = matches[1]
 	}
 }
 
-func writeSessionDataToLocalFile() error {
-	// 获取用户的主目录
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	// 构建 session_data 文件的完整路径
-	folderPath := filepath.Join(homeDir, ".bilibili-download")
-	filePath := filepath.Join(folderPath, "session_data")
-	// 检查文件夹是否存在，如果不存在则创建
-	if err = os.MkdirAll(folderPath, os.ModePerm); err != nil {
-		fmt.Println("无法创建文件夹:", err)
-		return err
-	}
-	// 打开文件，如果文件不存在则自动创建
-	file, err := os.Create(filePath)
-	if err != nil {
-		fmt.Println("无法创建文件:", err)
-		return err
-	}
-	defer file.Close()
-
-	// 覆盖写入字符串内容
-	_, err = file.WriteString(SessionData)
-	if err != nil {
-		fmt.Println("写入文件内容失败:", err)
-		return err
-	}
-	return nil
-}
-
-func CheckAccount() (flag bool, msg string) {
+// 检查账户是否登录
+func CheckAccount() bool {
 	if SessionData == "" {
-		return false, "❌ 未登录账号"
-	} else {
-		vip := CheckBigVip()
-		if vip {
-			return vip, "✅ 大会员已登陆"
-		} else {
-			return !vip, "⭕️ 大会员已过期"
-		}
+		return false
 	}
+	vip := CheckBigVip()
+	if vip {
+		return vip
+	}
+	return false
 }
 
+// 检查是否为大会员
 func CheckBigVip() bool {
-	params := make(map[string]interface{})
+	params := map[string]interface{}{}
 	data := ReqGet[NavUserRespData](WebInterfaceNav, params)
-	// 我的大会员类型是2，status是1;普通用户类型是1，status是0
 	if data.Data.VipStatus >= 1 && data.Data.VipType >= 2 {
 		return true
 	}
 	return false
 }
+
+// 下载媒体文件
 func DownloadMedia(bvId, savePath string, qn int, mediaType string) (filename string, err error) {
 	var url string
 	switch mediaType {
@@ -357,7 +333,7 @@ func DownloadMedia(bvId, savePath string, qn int, mediaType string) (filename st
 
 		rsp, err := client.Do(request)
 		if err != nil {
-			log.Println(err)
+			log.Println("下载请求失败:", err)
 			return "", err
 		}
 		defer rsp.Body.Close()
@@ -365,7 +341,7 @@ func DownloadMedia(bvId, savePath string, qn int, mediaType string) (filename st
 		path := filepath.Join(savePath, filename)
 		out, err := os.Create(path)
 		if err != nil {
-			log.Printf("err: %v", err)
+			log.Println("无法创建文件:", err)
 			return "", err
 		}
 		defer out.Close()
@@ -379,6 +355,8 @@ func DownloadMedia(bvId, savePath string, qn int, mediaType string) (filename st
 	}
 	return filename, nil
 }
+
+// 获取视频质量
 func GetVideoQuality(bvid string) ([]string, []int) {
 	data := playerPlayUrl(bvid)
 	quality := data.Data.AcceptQuality
@@ -386,6 +364,7 @@ func GetVideoQuality(bvid string) ([]string, []int) {
 	return description, quality
 }
 
+// 获取音频质量
 func GetAudioQuality(bvid string) ([]string, []int) {
 	data := playerPlayUrl(bvid)
 	var quality []int

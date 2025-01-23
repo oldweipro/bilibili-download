@@ -21,9 +21,6 @@ import (
 var bvId = "BV1zUCEYNEpk"
 
 func main() {
-	if bvId == "" {
-		return
-	}
 	err := FfmpegVersion()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -200,20 +197,15 @@ func findIntByQuality(quality []string, nums []int, selectedQuality string) int 
 // ============================= handle start ==============================
 
 func GetLocalSessionData() {
-	// 获取用户的主目录
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return
 	}
-	// 构建 session_data 文件的完整路径
 	sessionDataPath := filepath.Join(homeDir, ".bilibili-download", "session_data")
-	// 检查文件是否存在
 	_, err = os.Stat(sessionDataPath)
 	if os.IsNotExist(err) {
-		// 文件不存在，返回空字符串
 		return
 	} else if err != nil {
-		// 其他错误，返回错误信息
 		return
 	}
 	// 读取 session_data 文件内容
@@ -221,7 +213,6 @@ func GetLocalSessionData() {
 	if err != nil {
 		return
 	}
-	// 返回文件内容的字符串表示
 	SessionData = string(content)
 	return
 }
@@ -332,7 +323,6 @@ func CheckBigVip() bool {
 }
 func DownloadMedia(bvId, savePath string, qn int, mediaType string) (filename string, err error) {
 	var url string
-	// Determine the URL and media data based on the type
 	switch mediaType {
 	case "video":
 		data := playerPlayUrl(bvId)
@@ -458,27 +448,19 @@ func ReqGet[T WebInterfaceViewRespData | VideoPlayRespData | LoginCallbackRespDa
 		SetErrorResult(&errMsg).          // Unmarshal response body into errMsg automatically if status code >= 400.
 		EnableDump().                     // Enable dump at request level, only print dump content if there is an error or some unknown situation occurs to help troubleshoot.
 		Get(reqUrl)
-
 	if err != nil { // Error handling.
 		log.Println("error:", err)
 		log.Println("raw content:")
 		log.Println(resp.Dump()) // Record raw content when error occurs.
 		return
 	}
-
 	if resp.IsErrorState() { // Status code >= 400.
 		fmt.Println(errMsg.Message) // Record error message returned.
 		return
 	}
-
 	if resp.IsSuccessState() { // Status code is between 200 and 299.
 		return
 	}
-
-	// Unknown status code.
-	log.Println("unknown status", resp.Status)
-	log.Println("raw content:")
-	log.Println(resp.Dump()) // Record raw content when server returned unknown status code.
 	return
 }
 func setDefaultHeaders(req *http.Request, bvId string) {
@@ -535,7 +517,6 @@ func FfmpegMergeFile(fileList *[]string, outFile *string) error {
 	for _, fp := range *fileList {
 		arg = append(arg, "-i", fp)
 	}
-
 	arg = append(arg, "-vcodec", "copy", "-acodec", "copy", *outFile)
 	cmd := exec.Command("ffmpeg", arg...)
 	var out bytes.Buffer

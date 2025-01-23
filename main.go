@@ -498,34 +498,48 @@ func GetSavePath() (savePath string, err error) {
 
 //============================== ffmpeg start ==============================
 
-// FfmpegVersion 检查是否安装ffmpeg
+// FfmpegVersion 检查是否安装ffmpeg，并返回FFmpeg的版本信息
 func FfmpegVersion() error {
 	cmd := exec.Command("ffmpeg", "-version")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
+
+	// 获取标准输出和标准错误的合并输出
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return errors.New("未找到ffmpeg, 请先安装")
+		// 错误时返回详细信息，包括命令的输出和错误
+		return errors.New(fmt.Sprintf("未找到ffmpeg, 请先安装\n错误信息: %s\n命令输出: %s", err.Error(), string(out)))
 	}
+
+	// 输出FFmpeg的版本信息（如果需要）
+	fmt.Println("FFmpeg版本信息:\n", string(out))
+
 	return nil
 }
 
 // FfmpegMergeFile 使用ffmpeg合并文件
 func FfmpegMergeFile(fileList *[]string, outFile *string) error {
+	// 构建FFmpeg命令参数
 	var arg []string
 	for _, fp := range *fileList {
 		arg = append(arg, "-i", fp)
 	}
 	arg = append(arg, "-vcodec", "copy", "-acodec", "copy", *outFile)
+
+	// 创建命令
 	cmd := exec.Command("ffmpeg", arg...)
-	var out bytes.Buffer
+
+	// 捕获输出和错误
+	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
-	cmd.Stderr = &out
+	cmd.Stderr = &stderr
+
+	// 执行命令
 	err := cmd.Run()
 	if err != nil {
-		return errors.New(fmt.Sprintf("%s: %s", "文件合并失败", out.String()))
+		// 如果命令执行失败，返回详细错误信息
+		return errors.New(fmt.Sprintf("文件合并失败: %s\n标准输出: %s\n标准错误: %s", err.Error(), out.String(), stderr.String()))
 	}
+
+	// 成功返回 nil
 	return nil
 }
 
